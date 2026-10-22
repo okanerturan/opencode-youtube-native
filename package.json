@@ -8,6 +8,9 @@
   "exports": {
     ".": "./src/index.js"
   },
+  "scripts": {
+    "test": "node test/plugin.test.mjs"
+  },
   "keywords": [
     "opencode",
     "opencode-plugin",
