@@ -1,0 +1,20 @@
+{
+  "name": "opencode-youtube-native",
+  "version": "0.1.0",
+  "description": "OpenCode V2 plugin that enables native YouTube video & audio understanding (AI Studio style) on Gemini models via fileData.fileUri — works out of the box with OpenCode Go, OpenCode Zen, and Google AI.",
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "gemini",
+    "youtube",
+    "multimodal",
+    "video-understanding"
+  ],
+  "license": "MIT"
+}
