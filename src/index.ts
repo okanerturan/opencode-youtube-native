@@ -19,7 +19,7 @@ function canonicalizeYouTubeUrl(rawUrl: string): string {
       return `https://www.youtube.com/watch?v=${videoId}`;
     }
   } catch {
-    // Fallback to raw match
+    // fall through to the raw match
   }
   return rawUrl;
 }
@@ -28,6 +28,9 @@ export default Plugin.define({
   id: "opencode-youtube-native",
   async setup(ctx) {
     await ctx.session.hook("http.request", async (event) => {
+      // Primary loop only. Skip title, compaction, and transient generate requests.
+      if (event.kind && event.kind !== "primary") return;
+
       const url = event.request.url;
       if (!url.includes("/google/") && !url.includes("generativelanguage.googleapis.com")) {
         return;
@@ -45,53 +48,59 @@ export default Plugin.define({
 
       if (!Array.isArray(body.contents)) return;
 
-      let modified = false;
-
+      // Avoid attaching the same video twice when history already carries it.
+      const existing = new Set<string>();
       for (const content of body.contents) {
-        if (content.role !== "user" || !Array.isArray(content.parts)) continue;
-        if (content.parts.some((p: any) => p.functionResponse)) continue;
-
-        const existingUris = new Set<string>(
-          content.parts
-            .filter((p: any) => p.fileData?.fileUri)
-            .map((p: any) => p.fileData.fileUri)
-        );
-
-        const newParts: Array<{ fileData: { mimeType: string; fileUri: string } }> = [];
+        if (!Array.isArray(content.parts)) continue;
         for (const part of content.parts) {
-          if (typeof part.text !== "string") continue;
-          const matches = part.text.match(YT_REGEX);
-          if (!matches) continue;
-
-          for (const match of matches) {
-            const canonical = canonicalizeYouTubeUrl(match);
-            if (!existingUris.has(canonical)) {
-              existingUris.add(canonical);
-              newParts.push({
-                fileData: {
-                  mimeType: "video/mp4",
-                  fileUri: canonical,
-                },
-              });
-              modified = true;
-            }
-          }
-        }
-
-        if (newParts.length > 0) {
-          content.parts.unshift(...newParts);
+          if (part.fileData?.fileUri) existing.add(part.fileData.fileUri);
         }
       }
 
-      if (modified) {
-        const headers = new Headers(event.request.headers);
-        headers.delete("content-length");
-        event.request = new Request(event.request.url, {
-          method: event.request.method,
-          headers,
-          body: JSON.stringify(body),
-        });
+      // Attach to the newest real user turn. During tool loops the newest turn is a
+      // functionResponse, so walk back to the prompt that carried the link.
+      let target: any = null;
+      for (let i = body.contents.length - 1; i >= 0; i -= 1) {
+        const content = body.contents[i];
+        if (content.role !== "user" || !Array.isArray(content.parts)) continue;
+        if (content.parts.some((part: any) => part.functionResponse)) continue;
+        if (content.parts.some((part: any) => typeof part.text === "string" && part.text.trim())) {
+          target = content;
+          break;
+        }
       }
+      if (!target) return;
+
+      const newParts: Array<{ fileData: { mimeType: string; fileUri: string } }> = [];
+      for (const part of target.parts) {
+        if (typeof part.text !== "string") continue;
+        const matches = part.text.match(YT_REGEX);
+        if (!matches) continue;
+
+        for (const match of matches) {
+          const canonical = canonicalizeYouTubeUrl(match);
+          if (existing.has(canonical)) continue;
+          existing.add(canonical);
+          newParts.push({
+            fileData: {
+              mimeType: "video/mp4",
+              fileUri: canonical,
+            },
+          });
+        }
+      }
+
+      if (newParts.length === 0) return;
+
+      target.parts.unshift(...newParts);
+
+      const headers = new Headers(event.request.headers);
+      headers.delete("content-length");
+      event.request = new Request(event.request.url, {
+        method: event.request.method,
+        headers,
+        body: JSON.stringify(body),
+      });
     });
   },
 });

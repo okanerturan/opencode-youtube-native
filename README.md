@@ -23,30 +23,30 @@ Google's backend then streams the actual **video frames + audio track** directly
 
 ## Install
 
-### Option 1: Drop-in single file (Global)
-
-Copy `src/index.js` into your global OpenCode plugins folder:
+Use the OpenCode plugin manager. It installs from GitHub, pins the revision, and writes the global config for you.
 
 ```bash
-mkdir -p ~/.config/opencode/plugins
-curl -fsSL https://raw.githubusercontent.com/okturan/opencode-youtube-native/main/src/index.js \
-  -o ~/.config/opencode/plugins/opencode-youtube-native.js
+opencode plugin add github:okanerturan/opencode-youtube-native
+opencode plugin list
 ```
 
-OpenCode hot-reloads `~/.config/opencode/plugins/` automatically — no restart required.
+To update later:
 
-### Option 2:Via `opencode.jsonc`
-
-Add the package or path to your `~/.config/opencode/opencode.jsonc`:
-
-```jsonc
-{
-  "$schema": "https://opencode.ai/config.json",
-  "plugins": [
-    "opencode-youtube-native"
-  ]
-}
+```bash
+opencode plugin update opencode-youtube-native
 ```
+
+To remove:
+
+```bash
+opencode plugin remove opencode-youtube-native
+```
+
+The plugin is picked up on the next server cycle. If it does not appear in `opencode plugin list`, run `opencode service restart`.
+
+### Manual install
+
+For local development, drop `src/index.js` into `~/.config/opencode/plugins/`. OpenCode watches that directory and reloads automatically.
 
 ## Usage
 
