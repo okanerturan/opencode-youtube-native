@@ -1,14 +1,51 @@
 # opencode-youtube-native
 
-Native **Google AI Studio–style YouTube video + audio + visual frame understanding** inside [OpenCode](https://opencode.ai) — using your existing **OpenCode Go**, **OpenCode Zen**, or **Google Gemini** model, with **zero external API keys, zero `yt-dlp`, and zero Whisper**.
+Native YouTube video understanding inside OpenCode. Paste a link, and Gemini watches the frames and listens to the audio. No `yt-dlp`, no Whisper, no extra API key.
+
+## Install
+
+```sh
+opencode plugin add github:okanerturan/opencode-youtube-native
+```
+
+That installs the plugin, pins the revision, and writes it to your global config. Check it with:
+
+```sh
+opencode plugin list
+```
+
+Update later:
+
+```sh
+opencode plugin update github:okanerturan/opencode-youtube-native
+```
+
+Remove:
+
+```sh
+opencode plugin remove github:okanerturan/opencode-youtube-native
+```
+
+If the plugin does not show up, run `opencode service restart`.
+
+## Usage
+
+1. Select a Gemini model. `Gemini 4 Argon Contributor` on OpenCode Go works, and so do the other native Google routes such as `Gemini 3.8 Flash`.
+2. Paste a public YouTube link in your prompt:
+
+```text
+https://www.youtube.com/watch?v=pyRSiLuOCp4
+
+Explain the lessons, what is on the slide at 08:10, and read between the lines.
+```
+
+3. Gemini answers from the actual video: slides, screen content, audio, and timestamps.
+
+Supported link shapes: `youtube.com/watch?v=`, `youtu.be/`, `youtube.com/shorts/`, and `youtube.com/live/`. All of them are canonicalized before sending.
 
 ## How it works
 
-When you paste a YouTube link into OpenCode while using a Gemini model (like **Gemini 4 Argon** on OpenCode Go, or Gemini 3.7 Flash / 3.1 Pro), OpenCode normally sends the URL as a plain text string (`{ text: "https://www.youtube.com/watch?v=..." }`), so the model can't see or hear the video.
-
-However, OpenCode Go & Zen route Gemini models through the native `@opencode/ai/providers/google` (`v1beta`) endpoint.
-
-This tiny OpenCode V2 plugin uses `ctx.session.hook("http.request")` to detect YouTube URLs (`youtube.com/watch?v=...`, `youtu.be/...`, `youtube.com/shorts/...`, `youtube.com/live/...`) in your user prompt and injects Gemini's native `fileData.fileUri` multimodal block right into `contents[].parts` before the request leaves OpenCode:
+OpenCode sends a pasted URL as plain text, so Gemini never sees a video. This plugin hooks `ctx.session.hook("http.request")` and, just before the request leaves OpenCode, adds Gemini's native multimodal part to the newest user turn:
 
 ```json
 {
@@ -19,44 +56,31 @@ This tiny OpenCode V2 plugin uses `ctx.session.hook("http.request")` to detect Y
 }
 ```
 
-Google's backend then streams the actual **video frames + audio track** directly from YouTube into Gemini's 1M context window — so Gemini can read slides on screen, inspect UI demos, hear tone of voice, and reference exact timestamps without downloading anything locally.
+Google's backend then streams the video directly from YouTube into the model context. That is the same path Google AI Studio uses.
 
-## Install
+The hook only runs on the primary agent loop. Titles and compaction are skipped, and a video is never attached twice.
 
-Use the OpenCode plugin manager. It installs from GitHub, pins the revision, and writes the global config for you.
+## Models and routes
 
-```bash
-opencode plugin add github:okanerturan/opencode-youtube-native
-opencode plugin list
-```
+Works on models served through the native Google endpoint:
 
-To update later:
+- `opencode-go` (OpenCode Go), for example Argon Contributor
+- `opencode` (Default / OpenCode), if your Console account has credits
+- Google AI Studio or Vertex, though Vertex cannot fetch YouTube URLs
 
-```bash
-opencode plugin update opencode-youtube-native
-```
+Does not work on:
 
-To remove:
+- Cloudflare AI Gateway. It uses its own provider package and a gateway URL, so the hook does not match yet.
+- Non-Gemini models. Claude, GPT, DeepSeek, and Grok use OpenAI-style bodies and never carry `fileData`.
 
-```bash
-opencode plugin remove opencode-youtube-native
-```
+## Cost
 
-The plugin is picked up on the next server cycle. If it does not appear in `opencode plugin list`, run `opencode service restart`.
+Video is billed as input tokens. A 19 minute video is roughly 160k tokens, mostly 1fps frames plus audio. The same video costs about $0.64 on Argon via Go, $0.32 on Argon via `opencode`, and $0.24 on Gemini 3.8 Flash.
 
-### Manual install
+Two things to keep in mind:
 
-For local development, drop `src/index.js` into `~/.config/opencode/plugins/`. OpenCode watches that directory and reloads automatically.
-
-## Usage
-
-1. Select any Gemini model in OpenCode (e.g. `Gemini 4 Argon` on **OpenCode Go**).
-2. Paste any public YouTube URL in your prompt:
-   ```text
-   https://www.youtube.com/watch?v=pyRSiLuOCp4
-   Explain the lessons, what's on the slides at 08:10, and read between the lines.
-   ```
-3. Gemini natively watches and listens to the video (frames + audio) and answers directly.
+- Every request in a turn carries the video again, so long agent turns get expensive. Keep turns short.
+- Clip long videos when you only care about a section. Token cost scales with duration.
 
 ## License
 
